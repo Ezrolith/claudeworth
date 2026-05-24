@@ -1,0 +1,50 @@
+{
+  "name": "claudeworth",
+  "version": "0.1.0",
+  "description": "Is your Claude subscription worth it? Compares your real Claude Code usage against pay-as-you-go API rates and shows your effective discount, cache savings, and value-for-money.",
+  "type": "module",
+  "bin": {
+    "claudeworth": "./src/cli.js"
+  },
+  "main": "./src/cli.js",
+  "scripts": {
+    "start": "node src/cli.js"
+  },
+  "files": [
+    "src/cli.js",
+    "src/reader.js",
+    "src/pricing.js",
+    "src/plans.js",
+    "src/aggregate.js",
+    "src/render.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "claude",
+    "claude-code",
+    "anthropic",
+    "api",
+    "cost",
+    "pricing",
+    "token-usage",
+    "tokens",
+    "subscription",
+    "cli",
+    "dashboard",
+    "value-for-money"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ezrolith/claudeworth.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Ezrolith/claudeworth/issues"
+  },
+  "homepage": "https://github.com/Ezrolith/claudeworth#readme",
+  "author": "Ezrolith",
+  "license": "MIT"
+}
