@@ -4,7 +4,7 @@
   "description": "Is your Claude subscription worth it? Compares your real Claude Code usage against pay-as-you-go API rates and shows your effective discount, cache savings, and value-for-money.",
   "type": "module",
   "bin": {
-    "claudeworth": "./src/cli.js"
+    "claudeworth": "src/cli.js"
   },
   "main": "./src/cli.js",
   "scripts": {
