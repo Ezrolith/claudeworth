@@ -40,10 +40,10 @@ You can verify this by reading the source — it's small (~6 files, ~700 lines o
 ## Usage
 
 ```bash
-# Default: opens the dashboard for the Max 5x plan
+# Open the dashboard (defaults to Max 5x; switch plans with the dropdown in the page)
 npx claudeworth
 
-# Pick your plan
+# Set the initial plan via CLI (you can still change it in the dropdown)
 npx claudeworth --plan pro     # Claude Pro    ($20/mo)
 npx claudeworth --plan max5    # Claude Max 5x ($100/mo)  [default]
 npx claudeworth --plan max20   # Claude Max 20x ($200/mo)
@@ -51,6 +51,8 @@ npx claudeworth --plan max20   # Claude Max 20x ($200/mo)
 # Just write the HTML, don't open the browser
 npx claudeworth --no-open --out ./dashboard.html
 ```
+
+The plan dropdown at the top of the page lets you compare what your same usage would be worth on each tier — useful for deciding whether to upgrade, downgrade, or stay put.
 
 ## Requirements
 

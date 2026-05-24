@@ -290,6 +290,14 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
   details summary:hover { color: var(--text); }
   details[open] summary { color: var(--text); }
 
+  .plan-picker { display: inline-flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+  .plan-picker select {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 4px 8px; font: inherit; font-size: 13px; cursor: pointer;
+  }
+  .plan-picker select:hover { border-color: var(--accent); }
+  .plan-picker select:focus { outline: none; border-color: var(--accent); }
+
   footer { color: var(--muted); font-size: 12px; margin-top: 24px; text-align: center; }
   code { background: #21262d; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
 </style>
@@ -300,16 +308,23 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
 <div class="hero">
   <div class="hero-row">
     <div>
-      <div class="hero-title">${plan.label} · ${fmtUsd(plan.monthly)}/mo</div>
+      <div class="plan-picker">
+        <label class="hero-title" for="cw-plan-select">Plan:</label>
+        <select id="cw-plan-select">
+          <option value="pro"${planKey === 'pro' ? ' selected' : ''}>Claude Pro · $20/mo</option>
+          <option value="max5"${planKey === 'max5' ? ' selected' : ''}>Claude Max 5x · $100/mo</option>
+          <option value="max20"${planKey === 'max20' ? ' selected' : ''}>Claude Max 20x · $200/mo</option>
+        </select>
+      </div>
       <div class="subtle">Week of ${fmtDate(agg.weekStart)} – ${fmtDate(new Date(agg.weekEnd - 1))}</div>
     </div>
     <div style="text-align: right;">
       <div class="hero-title">Effective multiplier</div>
-      <div class="hero-big">${multiplier.toFixed(1)}×</div>
-      <div class="hero-stat">${fmtUsd(weekValue)} value · ${fmtUsd(weeklySub)} paid · ${headlineSavings}</div>
+      <div class="hero-big" id="cw-mult">${multiplier.toFixed(1)}×</div>
+      <div class="hero-stat" id="cw-stat-line">${fmtUsd(weekValue)} value · <span id="cw-weeklysub-inline">${fmtUsd(weeklySub)}</span> paid · <span id="cw-saved">${headlineSavings}</span></div>
     </div>
   </div>
-  <div class="verdict ${multiplier >= 2 ? 'good' : multiplier >= 1 ? 'meh' : 'bad'}">
+  <div class="verdict ${multiplier >= 2 ? 'good' : multiplier >= 1 ? 'meh' : 'bad'}" id="cw-verdict">
     ${multiplier >= 1
       ? `On pace for <strong>${fmtUsd(projectedMonth)}</strong> API value this month vs <strong>${fmtUsd(plan.monthly)}</strong> paid (${projectedMultiplier.toFixed(1)}×).`
       : `You're under break-even this week. Need ${fmtUsd(weeklySub - weekValue)} more API value to pay for the sub.`}
@@ -329,9 +344,9 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
   <div class="card">
     <h3>This week</h3>
     <div class="row"><span class="label">API value</span><strong>${fmtUsd(weekValue)}</strong></div>
-    <div class="row"><span class="label">Subscription (prorated)</span><strong>${fmtUsd(weeklySub)}</strong></div>
-    <div class="row"><span class="label">vs break-even</span><strong>${multiplier >= 1 ? multiplier.toFixed(1) + '× over' : fmtPct(pct(weekValue, weeklySub)) + ' of break-even'}</strong></div>
-    <div style="margin: 8px 0;">${bar(Math.min(1, weekValue / weeklySub), { invert: true, danger: 1.0, warn: 0.5 })}</div>
+    <div class="row"><span class="label">Subscription (prorated)</span><strong id="cw-weeklysub">${fmtUsd(weeklySub)}</strong></div>
+    <div class="row"><span class="label">vs break-even</span><strong id="cw-vs-be">${multiplier >= 1 ? multiplier.toFixed(1) + '× over' : fmtPct(pct(weekValue, weeklySub)) + ' of break-even'}</strong></div>
+    <div style="margin: 8px 0;" id="cw-be-bar-wrap">${bar(Math.min(1, weekValue / weeklySub), { invert: true, danger: 1.0, warn: 0.5 })}</div>
     <div class="row"><span class="label">Resets in</span><strong>${weekResetDays}d ${weekResetHrs}h</strong></div>
   </div>
 
@@ -414,6 +429,67 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
       });
     });
   });
+
+  // Plan dropdown: recompute multiplier / saved / verdict / break-even on change.
+  (function() {
+    const PLANS = {
+      pro:   { monthly: 20,  label: 'Claude Pro' },
+      max5:  { monthly: 100, label: 'Claude Max 5x' },
+      max20: { monthly: 200, label: 'Claude Max 20x' },
+    };
+    const WEEKS_PER_MONTH = 4.345;
+    const weekValue = ${weekValue};
+    const weekFraction = ${weekFraction};
+
+    const fmtUsd = (n) => {
+      if (n == null || isNaN(n)) return '$0.00';
+      if (Math.abs(n) >= 1000) return '$' + Math.round(n).toLocaleString('en-US');
+      if (Math.abs(n) >= 1) return '$' + n.toFixed(2);
+      return '$' + n.toFixed(3);
+    };
+    const fmtPct = (n) => (n * 100).toFixed(1) + '%';
+
+    function recompute(planKey) {
+      const plan = PLANS[planKey] || PLANS.max5;
+      const weekly = plan.monthly / WEEKS_PER_MONTH;
+      const mult = weekly > 0 ? weekValue / weekly : 0;
+      const saved = weekValue - weekly;
+      const projectedWeek = weekValue / weekFraction;
+      const projectedMonth = projectedWeek * WEEKS_PER_MONTH;
+      const projectedMult = plan.monthly > 0 ? projectedMonth / plan.monthly : 0;
+
+      document.getElementById('cw-mult').textContent = mult.toFixed(1) + '×';
+      document.getElementById('cw-weeklysub-inline').textContent = fmtUsd(weekly);
+      document.getElementById('cw-weeklysub').textContent = fmtUsd(weekly);
+
+      const savedEl = document.getElementById('cw-saved');
+      savedEl.innerHTML = saved >= 0
+        ? '<strong>' + fmtUsd(saved) + ' saved</strong>'
+        : '<strong class="bad">' + fmtUsd(-saved) + ' behind</strong>';
+
+      const vsBe = document.getElementById('cw-vs-be');
+      vsBe.textContent = mult >= 1
+        ? mult.toFixed(1) + '× over'
+        : fmtPct(Math.min(1, weekValue / weekly)) + ' of break-even';
+
+      const verdict = document.getElementById('cw-verdict');
+      verdict.classList.remove('good', 'meh', 'bad');
+      verdict.classList.add(mult >= 2 ? 'good' : mult >= 1 ? 'meh' : 'bad');
+      verdict.innerHTML = mult >= 1
+        ? 'On pace for <strong>' + fmtUsd(projectedMonth) + '</strong> API value this month vs <strong>' + fmtUsd(plan.monthly) + '</strong> paid (' + projectedMult.toFixed(1) + '×).'
+        : "You're under break-even this week. Need " + fmtUsd(weekly - weekValue) + ' more API value to pay for the sub.';
+
+      // Break-even bar: width and color class
+      const barWrap = document.getElementById('cw-be-bar-wrap');
+      const frac = Math.min(1, Math.max(0, weekValue / weekly));
+      // invert=true: high is good (green at top)
+      const cls = frac >= 1.0 ? 'bar-ok' : frac >= 0.5 ? 'bar-warn' : 'bar-danger';
+      barWrap.innerHTML = '<span class="bar ' + cls + '"><span class="bar-fill" style="width:' + (frac * 100).toFixed(1) + '%"></span></span>';
+    }
+
+    const sel = document.getElementById('cw-plan-select');
+    if (sel) sel.addEventListener('change', () => recompute(sel.value));
+  })();
 </script>
 
 <h2>By model family · this week</h2>
