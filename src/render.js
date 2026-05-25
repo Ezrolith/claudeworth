@@ -485,6 +485,13 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
       // invert=true: high is good (green at top)
       const cls = frac >= 1.0 ? 'bar-ok' : frac >= 0.5 ? 'bar-warn' : 'bar-danger';
       barWrap.innerHTML = '<span class="bar ' + cls + '"><span class="bar-fill" style="width:' + (frac * 100).toFixed(1) + '%"></span></span>';
+
+      // Footer plan label
+      const footerPlan = document.getElementById('cw-plan-footer');
+      if (footerPlan) footerPlan.textContent = planKey;
+
+      // Page title
+      document.title = 'claudeworth · ' + plan.label;
     }
 
     const sel = document.getElementById('cw-plan-select');
@@ -553,7 +560,7 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
 </details>
 
 <footer>
-  Generated ${fmtDateTime(generatedAt)} · source: <code>${escapeHtml(sourceDir)}</code> · plan: <code>${planKey}</code>
+  Generated ${fmtDateTime(generatedAt)} · source: <code>${escapeHtml(sourceDir)}</code> · plan: <code id="cw-plan-footer">${planKey}</code>
 </footer>
 
 </main>

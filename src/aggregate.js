@@ -156,7 +156,6 @@ export function aggregate(events, { now = new Date() } = {}) {
   // Current usage streak: consecutive days back from today with at least one event.
   // (Today counts even if you've only used Claude once.)
   let streak = 0;
-  const todayKey = localDateKey(now);
   const dayCostMap = new Map(dailySeries.map(d => [d.day, d.cost]));
   for (let i = 0; i < 365; i++) {
     const d = new Date(now);

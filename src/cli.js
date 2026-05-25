@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 import { writeFile, mkdir } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { tmpdir, homedir } from 'node:os';
 import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { readAllUsageEvents } from './reader.js';
 import { aggregate } from './aggregate.js';
 import { renderDashboard } from './render.js';
 import { planFromKey, PLANS } from './plans.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const PKG = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'));
 
 function parseArgs(argv) {
   const args = { plan: 'max5', open: true, out: null };
@@ -17,23 +22,28 @@ function parseArgs(argv) {
     else if (a === '--no-open') { args.open = false; }
     else if (a === '--out' && argv[i+1]) { args.out = argv[++i]; }
     else if (a === '--help' || a === '-h') { args.help = true; }
+    else if (a === '--version' || a === '-v') { args.version = true; }
   }
   return args;
 }
 
 function help() {
-  console.log(`claudeworth — is your Claude subscription worth it?
+  console.log(`claudeworth v${PKG.version} — is your Claude subscription worth it?
 
 Usage: claudeworth [options]
 
 Options:
-  --plan <key>     Subscription plan: pro | max5 | max20  (default: max5)
+  --plan <key>     Initial subscription plan: pro | max5 | max20  (default: max5)
+                   You can change it in the page via the dropdown.
   --no-open        Don't auto-open the browser; just write the file
   --out <path>     Where to write the HTML (default: a temp file)
+  -v, --version    Print version and exit
   -h, --help       Show this help
 
 Plans:
 ${Object.entries(PLANS).map(([k, p]) => `  ${k.padEnd(8)} ${p.label} ($${p.monthly}/mo)`).join('\n')}
+
+Source: ${PKG.homepage || 'https://github.com/Ezrolith/claudeworth'}
 `);
 }
 
@@ -51,6 +61,7 @@ function openInBrowser(path) {
 async function main() {
   const args = parseArgs(process.argv);
   if (args.help) { help(); return; }
+  if (args.version) { console.log(PKG.version); return; }
 
   const plan = planFromKey(args.plan);
 
