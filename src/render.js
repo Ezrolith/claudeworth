@@ -68,13 +68,8 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
   const weekResetDays = Math.floor(weekResetIn / (24 * 3600 * 1000));
   const weekResetHrs = Math.floor((weekResetIn % (24 * 3600 * 1000)) / (3600 * 1000));
 
-  // Cache savings this week (the killer stat for detail-hungry users)
-  const weekCacheSavings = agg.totals.week.uncachedCost - agg.totals.week.cost;
-  const weekUncached = agg.totals.week.uncachedCost;
-
   // All-time
   const allTime = agg.totals.allTime;
-  const allTimeCacheSavings = allTime.uncachedCost - allTime.cost;
 
   // Daily sparkline + table
   const maxDay = Math.max(1, ...agg.dailySeries.map(d => d.cost));
@@ -141,7 +136,6 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
       <td class="num">${fmtTokens(f.cacheCreate)}</td>
       <td class="num">${fmtTokens(f.cacheRead)}</td>
       <td class="num">${fmtPct(f.cacheHitRate)}</td>
-      <td class="num good">${fmtUsd(f.cacheSavings)}</td>
     </tr>`).join('');
 
   const projectRows = topProjects.map(p => `
@@ -342,7 +336,7 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
   </div>
 </div>
 
-<div class="grid-3">
+<div class="grid">
 
   <div class="card">
     <h3>Last 5 hours</h3>
@@ -359,14 +353,6 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
     <div class="row"><span class="label">vs break-even</span><strong id="cw-vs-be">${multiplier >= 1 ? multiplier.toFixed(1) + '× over' : fmtPct(pct(weekValue, weeklySub)) + ' of break-even'}</strong></div>
     <div style="margin: 8px 0;" id="cw-be-bar-wrap">${bar(Math.min(1, weekValue / weeklySub), { invert: true, danger: 1.0, warn: 0.5 })}</div>
     <div class="row"><span class="label">Resets in</span><strong>${weekResetDays}d ${weekResetHrs}h</strong></div>
-  </div>
-
-  <div class="card">
-    <h3>Cache savings (this week)</h3>
-    <div class="row"><span class="label">Without caching</span><strong>${fmtUsd(weekUncached)}</strong></div>
-    <div class="row"><span class="label">With caching (what you actually used)</span><strong>${fmtUsd(weekValue)}</strong></div>
-    <div class="row"><span class="label">Saved by caching</span><strong class="good">${fmtUsd(weekCacheSavings)}</strong></div>
-    ${weekValue > 0 ? `<div class="subtle" style="margin-top:8px;">Without caching, this week would have cost <strong class="good">${(weekUncached / weekValue).toFixed(1)}× more</strong>.</div>` : ''}
   </div>
 
 </div>
@@ -522,9 +508,8 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
       <th class="num">Cache write</th>
       <th class="num">Cache read</th>
       <th class="num">Cache hit</th>
-      <th class="num">Cache saved</th>
     </tr></thead>
-    <tbody>${familyRows || '<tr><td colspan="9" class="subtle">No model usage this week.</td></tr>'}</tbody>
+    <tbody>${familyRows || '<tr><td colspan="8" class="subtle">No model usage this week.</td></tr>'}</tbody>
   </table>
 </div>
 
@@ -535,7 +520,6 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
   <div class="row"><span class="label">Current streak</span><strong>${agg.streak} ${agg.streak === 1 ? 'day' : 'days'}${agg.streak >= 7 ? ' 🔥' : ''}</strong></div>
   <div class="row"><span class="label">Total messages</span><strong>${fmtInt(allTime.calls)}</strong></div>
   <div class="row"><span class="label">Total API value</span><strong>${fmtUsd(allTime.cost)}</strong></div>
-  <div class="row"><span class="label">Cache savings (lifetime)</span><strong class="good">${fmtUsd(allTimeCacheSavings)}</strong></div>
   ${agg.topCall ? `
     <div class="row" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);">
       <span class="label">Most expensive single call</span>

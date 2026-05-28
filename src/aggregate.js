@@ -1,4 +1,4 @@
-import { priceEvent, priceEventUncached, familyOf, modelInfo } from './pricing.js';
+import { priceEvent, familyOf, modelInfo } from './pricing.js';
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -21,7 +21,6 @@ export function priceAndAnnotate(events) {
     ...ev,
     family: familyOf(ev.model),
     cost: priceEvent(ev),
-    uncachedCost: priceEventUncached(ev),
     date: new Date(ev.ts),
   }));
 }
@@ -91,11 +90,10 @@ export function aggregate(events, { now = new Date() } = {}) {
   const familyMap = new Map();
   for (const e of week) {
     const row = familyMap.get(e.family) || {
-      family: e.family, cost: 0, uncachedCost: 0, calls: 0,
+      family: e.family, cost: 0, calls: 0,
       input: 0, output: 0, cacheRead: 0, cacheCreate: 0,
     };
     row.cost += e.cost;
-    row.uncachedCost += e.uncachedCost;
     row.calls += 1;
     row.input += e.input;
     row.output += e.output;
@@ -107,7 +105,6 @@ export function aggregate(events, { now = new Date() } = {}) {
   for (const f of families) {
     const totalInput = f.input + f.cacheRead + f.cacheCreate;
     f.cacheHitRate = totalInput > 0 ? f.cacheRead / totalInput : 0;
-    f.cacheSavings = Math.max(0, f.uncachedCost - f.cost);
   }
 
   // Daily series for the last 30 days, bucketed in LOCAL time.
@@ -175,8 +172,6 @@ export function aggregate(events, { now = new Date() } = {}) {
   // All-time bounds
   const allTimeFirst = priced.length ? priced[0].date : null;
   const allTimeLast = priced.length ? priced[priced.length - 1].date : null;
-  const allTimeUncached = sum(priced, 'uncachedCost');
-  const allTimeCost = sum(priced, 'cost');
 
   return {
     now,
@@ -184,10 +179,10 @@ export function aggregate(events, { now = new Date() } = {}) {
     weekEnd,
     sessionWindowStart,
     totals: {
-      week:       { cost: sum(week, 'cost'),    uncachedCost: sum(week, 'uncachedCost'),    calls: week.length },
-      session:    { cost: sum(session, 'cost'), uncachedCost: sum(session, 'uncachedCost'), calls: session.length },
-      last30:     { cost: sum(last30, 'cost'),  uncachedCost: sum(last30, 'uncachedCost'),  calls: last30.length },
-      allTime:    { cost: allTimeCost,          uncachedCost: allTimeUncached,              calls: all.length, firstTs: allTimeFirst, lastTs: allTimeLast },
+      week:    { cost: sum(week, 'cost'),    calls: week.length },
+      session: { cost: sum(session, 'cost'), calls: session.length },
+      last30:  { cost: sum(last30, 'cost'),  calls: last30.length },
+      allTime: { cost: sum(all, 'cost'),     calls: all.length, firstTs: allTimeFirst, lastTs: allTimeLast },
     },
     sessions,
     projects,
