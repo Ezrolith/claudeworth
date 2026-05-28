@@ -549,6 +549,7 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
     <li>Monthly pace projects this week's value to a full week (linear), then × 4.345.</li>
     <li>Per-session caps and weekly limits aren't published as hard token quotas, so we don't show "% used" of an allowance — only API-equivalent value.</li>
     <li>Days are bucketed in your local timezone.</li>
+    <li><strong>Why our numbers may run 5–10% higher than toktrack / codeburn:</strong> we price 1-hour cache writes at <strong>2.0× base input</strong> per <a href="https://platform.claude.com/docs/en/build-with-claude/prompt-caching">Anthropic's published rate</a>. Tools that source pricing from LiteLLM's main Anthropic entries fall back to the 5-minute rate (1.25×) for all cache writes, because LiteLLM doesn't publish a separate 1h rate. Claude Code uses 1h caching for sticky context (system prompts, CLAUDE.md), so this matters most on Opus-heavy sessions. If you ever switched to the API at list rates, your invoice would match these numbers, not theirs.</li>
   </ul>
   ${unknownBlock}
 </div>
