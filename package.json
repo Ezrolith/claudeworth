@@ -1,6 +1,6 @@
 {
   "name": "claudeworth",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Is your Claude subscription worth it? Compares your real Claude Code usage against pay-as-you-go API rates and shows your effective discount, cache savings, and value-for-money.",
   "type": "module",
   "bin": {

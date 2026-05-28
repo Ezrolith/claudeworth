@@ -81,7 +81,7 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
   const recentDays = agg.dailySeries.slice(-30);
   const sparkBars = recentDays.map(d => {
     const h = Math.max(2, Math.round((d.cost / maxDay) * 60));
-    return `<div class="spark-col" title="${d.day}: ${fmtUsd(d.cost)} · ${fmtInt(d.calls)} calls"><div class="spark-bar" style="height:${h}px"></div><div class="spark-label">${d.day.slice(8)}</div></div>`;
+    return `<div class="spark-col"><div class="spark-tip">${d.day} · <strong>${fmtUsd(d.cost)}</strong> · ${fmtInt(d.calls)} calls</div><div class="spark-bar" style="height:${h}px"></div><div class="spark-label">${d.day.slice(8)}</div></div>`;
   }).join('');
 
   // Heatmap — render two grids (cost and calls), CSS toggle between them.
@@ -280,10 +280,21 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
   .hm-container[data-mode="cost"]  .hm-view-calls { display: none; }
   .hm-container[data-mode="calls"] .hm-view-cost  { display: none; }
 
-  .spark { display: flex; align-items: flex-end; gap: 3px; height: 80px; padding: 4px 0; overflow-x: auto; }
-  .spark-col { display: flex; flex-direction: column; align-items: center; min-width: 14px; }
-  .spark-bar { width: 8px; background: linear-gradient(180deg, #58a6ff, #d28cff); border-radius: 2px 2px 0 0; }
+  .spark { display: flex; align-items: flex-end; gap: 3px; height: 80px; padding: 4px 0; overflow: visible; position: relative; }
+  .spark-col { display: flex; flex-direction: column; align-items: center; min-width: 14px; position: relative; cursor: default; }
+  .spark-bar { width: 8px; background: linear-gradient(180deg, #58a6ff, #d28cff); border-radius: 2px 2px 0 0; transition: filter 0.1s; }
+  .spark-col:hover .spark-bar { filter: brightness(1.4); }
   .spark-label { font-size: 9px; color: var(--muted); margin-top: 3px; }
+  .spark-tip {
+    position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 10px; font-size: 12px; white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    opacity: 0; pointer-events: none; transition: opacity 0.1s;
+    z-index: 20;
+  }
+  .spark-col:hover .spark-tip { opacity: 1; }
 
   details { margin-top: 24px; }
   details summary { cursor: pointer; color: var(--muted); font-size: 13px; padding: 8px 0; }
@@ -355,7 +366,7 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
     <div class="row"><span class="label">If cache had been off</span><strong>${fmtUsd(weekUncached)}</strong></div>
     <div class="row"><span class="label">With caching (actual)</span><strong>${fmtUsd(weekValue)}</strong></div>
     <div class="row"><span class="label">Saved by caching</span><strong class="good">${fmtUsd(weekCacheSavings)}</strong></div>
-    <div class="subtle" style="margin-top:8px;">Cache reads cost 10% of base input. This shows what your cache_read tokens would have cost at full price.</div>
+    ${weekValue > 0 ? `<div class="subtle" style="margin-top:8px;">Without caching, this week would have cost <strong class="good">${(weekUncached / weekValue).toFixed(1)}× more</strong>.</div>` : ''}
   </div>
 
 </div>
