@@ -363,8 +363,8 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
 
   <div class="card">
     <h3>Cache savings (this week)</h3>
-    <div class="row"><span class="label">If cache had been off</span><strong>${fmtUsd(weekUncached)}</strong></div>
-    <div class="row"><span class="label">With caching (actual)</span><strong>${fmtUsd(weekValue)}</strong></div>
+    <div class="row"><span class="label">Without caching</span><strong>${fmtUsd(weekUncached)}</strong></div>
+    <div class="row"><span class="label">With caching (what you actually used)</span><strong>${fmtUsd(weekValue)}</strong></div>
     <div class="row"><span class="label">Saved by caching</span><strong class="good">${fmtUsd(weekCacheSavings)}</strong></div>
     ${weekValue > 0 ? `<div class="subtle" style="margin-top:8px;">Without caching, this week would have cost <strong class="good">${(weekUncached / weekValue).toFixed(1)}× more</strong>.</div>` : ''}
   </div>
