@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { writeFile, mkdir } from 'node:fs/promises';
+import { writeFile, mkdir, stat } from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import { tmpdir, homedir } from 'node:os';
 import { join, dirname } from 'node:path';
@@ -49,13 +49,17 @@ Source: ${PKG.homepage || 'https://github.com/Ezrolith/claudeworth'}
 
 function openInBrowser(path) {
   const platform = process.platform;
-  if (platform === 'win32') {
-    spawn('cmd', ['/c', 'start', '""', path], { detached: true, stdio: 'ignore' }).unref();
-  } else if (platform === 'darwin') {
-    spawn('open', [path], { detached: true, stdio: 'ignore' }).unref();
-  } else {
-    spawn('xdg-open', [path], { detached: true, stdio: 'ignore' }).unref();
-  }
+  const [cmd, args] =
+    platform === 'win32'  ? ['cmd', ['/c', 'start', '""', path]] :
+    platform === 'darwin' ? ['open', [path]] :
+                            ['xdg-open', [path]];
+  const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
+  // A missing opener (headless box, stripped PATH) emits an async 'error' event that would
+  // otherwise crash the process with an unhandled exception — after the file was already written.
+  child.on('error', () => {
+    console.error(`Couldn't open a browser automatically. Open this file manually:\n  ${path}`);
+  });
+  child.unref();
 }
 
 async function main() {
@@ -63,7 +67,13 @@ async function main() {
   if (args.help) { help(); return; }
   if (args.version) { console.log(PKG.version); return; }
 
-  const plan = planFromKey(args.plan);
+  // Normalize the plan key once so the page's numbers, dropdown selection, and footer all agree
+  // (planFromKey already falls back to max5, but the raw key was leaking into the HTML).
+  const planKey = PLANS[args.plan] ? args.plan : 'max5';
+  if (planKey !== args.plan) {
+    console.error(`Unknown plan "${args.plan}", using ${planKey}. Valid: ${Object.keys(PLANS).join(', ')}.`);
+  }
+  const plan = planFromKey(planKey);
 
   process.stdout.write(`Reading session data from ~/.claude/projects ... `);
   const { events, projectsDir } = await readAllUsageEvents();
@@ -78,9 +88,10 @@ async function main() {
   const html = renderDashboard({
     agg,
     plan,
-    planKey: args.plan,
+    planKey,
     sourceDir: projectsDir,
     generatedAt: new Date(),
+    version: PKG.version,
   });
 
   let outPath = args.out;
@@ -89,6 +100,10 @@ async function main() {
     await mkdir(dir, { recursive: true });
     outPath = join(dir, 'dashboard.html');
   } else {
+    // If --out points at an existing directory, write a default filename inside it.
+    try {
+      if ((await stat(outPath)).isDirectory()) outPath = join(outPath, 'dashboard.html');
+    } catch { /* path doesn't exist yet — treat it as a file path */ }
     await mkdir(dirname(outPath), { recursive: true });
   }
   await writeFile(outPath, html, 'utf8');

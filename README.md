@@ -11,13 +11,13 @@ That's it. It reads `~/.claude/projects/` locally, prices every message at Anthr
 ## What it shows
 
 - **Effective multiplier** — your API-equivalent value ÷ your prorated subscription cost (e.g. "7.4× this week").
-- **Cache savings** — what your usage would have cost without prompt caching. Often the largest number on the page.
+- **Lifetime return** — total API-equivalent value extracted vs. subscription actually paid since your first session, as a net dollar figure and a multiplier. Steadier than the single-week number.
 - **Last 5 hours** — proxy for Claude Code's per-session cap.
 - **This week** — value vs. break-even, with a monthly pace projection.
-- **By project** — which repos are eating your subscription.
-- **By model** — Opus vs Sonnet vs Haiku split, with per-model cache hit rate and savings.
+- **By project** — which repos are eating your subscription (named from each session's real working directory).
+- **By model** — Opus vs Sonnet vs Haiku split, with per-model cache hit rate.
 - **Top sessions** — your most expensive sessions, with the model mix that drove the cost.
-- **Heatmap** — day-of-week × hour-of-day, toggleable between cost and call count. Find your peak hours.
+- **Heatmap** — day-of-week × hour-of-day, toggleable between cost and call count, with each day's total down the side. Find your peak hours.
 - **All-time stats** — lifetime totals, current streak, most expensive single call.
 - **Methodology** — the exact formula, the pricing table, and a list of any model strings that didn't match (collapsible).
 
@@ -35,7 +35,7 @@ It also fixes one small but expensive bug both other tools appear to share: Opus
 
 Your Claude Code session files contain every prompt and response you've ever sent. A tool that ships them anywhere is a privacy disaster. `claudeworth` reads them, computes locally, writes an HTML file, opens your browser. That's the entire data flow.
 
-You can verify this by reading the source — it's small (~6 files, ~700 lines of vanilla JS, no dependencies).
+You can verify this by reading the source — it's small (6 files, ~1,200 lines of vanilla JS, no dependencies).
 
 ## Usage
 

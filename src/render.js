@@ -45,7 +45,7 @@ function escapeHtml(s) {
   ));
 }
 
-export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) {
+export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt, version }) {
   const weeklySub = weeklyCost(plan);
   const weekValue = agg.totals.week.cost;
   const multiplier = weeklySub > 0 ? weekValue / weeklySub : 0;
@@ -59,6 +59,18 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
   const projectedWeek = weekValue / weekFraction;
   const projectedMonth = projectedWeek * 4.345;
   const projectedMultiplier = plan.monthly > 0 ? projectedMonth / plan.monthly : 0;
+  // Too little of the week has elapsed to extrapolate a sane monthly pace (a $2 Monday-morning
+  // run would otherwise project to ~$869/mo). Below this, show value-so-far instead of a pace.
+  const tooEarly = weekFraction < 0.15;
+
+  // Lifetime return: API-equivalent value extracted vs subscription actually paid since day one.
+  // The most direct answer to "is it worth it?", and far steadier than the single-week multiplier.
+  const allTime = agg.totals.allTime;
+  const AVG_MONTH_MS = (365.25 / 12) * 24 * 3600 * 1000;
+  const monthsSinceFirst = allTime.firstTs ? Math.max(0, (now - allTime.firstTs) / AVG_MONTH_MS) : 0;
+  const subPaid = monthsSinceFirst * plan.monthly;
+  const lifetimeNet = allTime.cost - subPaid;
+  const lifetimeMult = subPaid > 0 ? allTime.cost / subPaid : 0;
 
   // Session window labels
   const sessionStartLabel = fmtDateTime(agg.sessionWindowStart);
@@ -68,8 +80,7 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
   const weekResetDays = Math.floor(weekResetIn / (24 * 3600 * 1000));
   const weekResetHrs = Math.floor((weekResetIn % (24 * 3600 * 1000)) / (3600 * 1000));
 
-  // All-time
-  const allTime = agg.totals.allTime;
+  // All-time (also feeds the lifetime-return block computed above)
 
   // Daily sparkline + table
   const maxDay = Math.max(1, ...agg.dailySeries.map(d => d.cost));
@@ -80,10 +91,15 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
   }).join('');
 
   // Heatmap — render two grids (cost and calls), CSS toggle between them.
-  const { matrix, matrixCalls, hourTotals, dowTotals } = agg.heatmap;
+  const { matrix, matrixCalls, hourTotals, dowTotals, dowTotalsCalls } = agg.heatmap;
   const heatmapMaxCost = Math.max(0, ...matrix.flat());
   const heatmapMaxCalls = Math.max(0, ...matrixCalls.flat());
   const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  // Day-of-week labels carry that day's total (spend in the cost view, calls in the calls view).
+  const dowLabel = (i, totalStr) =>
+    `<div class="hm-dow"><span class="hm-dow-day">${DOW_LABELS[i]}</span><span class="hm-dow-total">${totalStr}</span></div>`;
+  const dowColCost = DOW_LABELS.map((_, i) => dowLabel(i, dowTotals[i] > 0 ? fmtUsd(dowTotals[i]) : '–')).join('');
+  const dowColCalls = DOW_LABELS.map((_, i) => dowLabel(i, dowTotalsCalls[i] > 0 ? fmtInt(dowTotalsCalls[i]) : '–')).join('');
   function renderHeatGrid(values, max, labelFn, unit) {
     return values.map((row, dow) =>
       row.map((v, hour) => {
@@ -259,12 +275,14 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
   td.model { color: var(--accent); }
   tr:last-child td { border-bottom: none; }
 
-  .hm-wrap { display: grid; grid-template-columns: 36px 1fr; gap: 4px; }
+  .hm-wrap { display: grid; grid-template-columns: 64px 1fr; gap: 4px; }
   .hm-grid { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; }
   .hm-cell { aspect-ratio: 1; min-height: 14px; border-radius: 2px; background: #1c222b; transition: outline 0.1s; }
   .hm-cell:hover { outline: 1px solid var(--accent); }
-  .hm-dow-col { display: grid; grid-template-rows: repeat(7, 1fr); gap: 2px; font-size: 10px; color: var(--muted); align-items: center; }
-  .hm-dow { display: flex; align-items: center; justify-content: flex-end; padding-right: 4px; min-height: 14px; }
+  .hm-dow-col { display: grid; grid-template-rows: repeat(7, 1fr); gap: 2px; font-size: 10px; align-items: center; }
+  .hm-dow { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; padding-right: 6px; min-height: 14px; line-height: 1.15; }
+  .hm-dow-day { color: var(--text); font-weight: 500; }
+  .hm-dow-total { font-size: 9px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .hm-htick { font-size: 10px; color: var(--muted); text-align: left; }
   .hm-htick-row { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; margin-top: 4px; }
   .hm-controls { display: flex; gap: 4px; margin-bottom: 12px; }
@@ -329,8 +347,10 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
       <div class="hero-stat" id="cw-stat-line">${fmtUsd(weekValue)} value · <span id="cw-weeklysub-inline">${fmtUsd(weeklySub)}</span> paid · <span id="cw-saved">${headlineSavings}</span></div>
     </div>
   </div>
-  <div class="verdict ${multiplier >= 2 ? 'good' : multiplier >= 1 ? 'meh' : 'bad'}" id="cw-verdict">
-    ${multiplier >= 1
+  <div class="verdict ${tooEarly ? 'meh' : multiplier >= 2 ? 'good' : multiplier >= 1 ? 'meh' : 'bad'}" id="cw-verdict">
+    ${tooEarly
+      ? `Only ${Math.round(weekFraction * 100)}% into the week — too early to project a monthly pace. <strong>${fmtUsd(weekValue)}</strong> of API value so far.`
+      : multiplier >= 1
       ? `On pace for <strong>${fmtUsd(projectedMonth)}</strong> API value this month vs <strong>${fmtUsd(plan.monthly)}</strong> paid (${projectedMultiplier.toFixed(1)}×).`
       : `You're under break-even this week. Need ${fmtUsd(weeklySub - weekValue)} more API value to pay for the sub.`}
   </div>
@@ -398,18 +418,14 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
     <button type="button" class="hm-btn" data-mode="calls">Calls</button>
   </div>
   <div class="hm-wrap hm-view hm-view-cost">
-    <div class="hm-dow-col">
-      ${DOW_LABELS.map(d => `<div class="hm-dow">${d}</div>`).join('')}
-    </div>
+    <div class="hm-dow-col">${dowColCost}</div>
     <div>
       <div class="hm-grid">${heatmapCellsCost}</div>
       <div class="hm-htick-row">${hourTicks}</div>
     </div>
   </div>
   <div class="hm-wrap hm-view hm-view-calls">
-    <div class="hm-dow-col">
-      ${DOW_LABELS.map(d => `<div class="hm-dow">${d}</div>`).join('')}
-    </div>
+    <div class="hm-dow-col">${dowColCalls}</div>
     <div>
       <div class="hm-grid">${heatmapCellsCalls}</div>
       <div class="hm-htick-row">${hourTicks}</div>
@@ -437,6 +453,9 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
     const WEEKS_PER_MONTH = 4.345;
     const weekValue = ${weekValue};
     const weekFraction = ${weekFraction};
+    const tooEarly = weekFraction < 0.15;
+    const monthsSinceFirst = ${monthsSinceFirst};
+    const lifetimeValue = ${allTime.cost};
 
     const fmtUsd = (n) => {
       if (n == null || isNaN(n)) return '$0.00';
@@ -471,10 +490,29 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
 
       const verdict = document.getElementById('cw-verdict');
       verdict.classList.remove('good', 'meh', 'bad');
-      verdict.classList.add(mult >= 2 ? 'good' : mult >= 1 ? 'meh' : 'bad');
-      verdict.innerHTML = mult >= 1
+      verdict.classList.add(tooEarly ? 'meh' : mult >= 2 ? 'good' : mult >= 1 ? 'meh' : 'bad');
+      verdict.innerHTML = tooEarly
+        ? 'Only ' + Math.round(weekFraction * 100) + '% into the week — too early to project a monthly pace. <strong>' + fmtUsd(weekValue) + '</strong> of API value so far.'
+        : mult >= 1
         ? 'On pace for <strong>' + fmtUsd(projectedMonth) + '</strong> API value this month vs <strong>' + fmtUsd(plan.monthly) + '</strong> paid (' + projectedMult.toFixed(1) + '×).'
         : "You're under break-even this week. Need " + fmtUsd(weekly - weekValue) + ' more API value to pay for the sub.';
+
+      // Lifetime return block (plan-dependent via subscription paid)
+      const subPaid = monthsSinceFirst * plan.monthly;
+      const ltNet = lifetimeValue - subPaid;
+      const ltMult = subPaid > 0 ? lifetimeValue / subPaid : 0;
+      const paidEl = document.getElementById('cw-lt-paid');
+      if (paidEl) paidEl.textContent = fmtUsd(subPaid);
+      const netEl = document.getElementById('cw-lt-net');
+      if (netEl) {
+        netEl.textContent = (ltNet >= 0 ? '+' : '-') + fmtUsd(Math.abs(ltNet));
+        netEl.classList.remove('good', 'bad');
+        netEl.classList.add(ltNet >= 0 ? 'good' : 'bad');
+      }
+      const ltMultEl = document.getElementById('cw-lt-mult');
+      if (ltMultEl) ltMultEl.textContent = subPaid > 0.5 ? ltMult.toFixed(1) + '×' : '—';
+      const ltNoteEl = document.getElementById('cw-lt-note');
+      if (ltNoteEl) ltNoteEl.textContent = 'Over ' + monthsSinceFirst.toFixed(1) + ' months at ' + fmtUsd(plan.monthly) + '/mo.';
 
       // Break-even bar: width and color class
       const barWrap = document.getElementById('cw-be-bar-wrap');
@@ -507,7 +545,7 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
       <th class="num">Output</th>
       <th class="num">Cache write</th>
       <th class="num">Cache read</th>
-      <th class="num">Cache hit</th>
+      <th class="num">% from cache</th>
     </tr></thead>
     <tbody>${familyRows || '<tr><td colspan="8" class="subtle">No model usage this week.</td></tr>'}</tbody>
   </table>
@@ -520,6 +558,18 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
   <div class="row"><span class="label">Current streak</span><strong>${agg.streak} ${agg.streak === 1 ? 'day' : 'days'}${agg.streak >= 7 ? ' 🔥' : ''}</strong></div>
   <div class="row"><span class="label">Total messages</span><strong>${fmtInt(allTime.calls)}</strong></div>
   <div class="row"><span class="label">Total API value</span><strong>${fmtUsd(allTime.cost)}</strong></div>
+  <div class="row" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);">
+    <span class="label">Subscription paid since then</span><strong id="cw-lt-paid">${fmtUsd(subPaid)}</strong>
+  </div>
+  <div class="row">
+    <span class="label">Lifetime net value</span>
+    <strong id="cw-lt-net" class="${lifetimeNet >= 0 ? 'good' : 'bad'}">${(lifetimeNet >= 0 ? '+' : '-') + fmtUsd(Math.abs(lifetimeNet))}</strong>
+  </div>
+  <div class="row">
+    <span class="label">Lifetime return</span>
+    <strong id="cw-lt-mult">${subPaid > 0.5 ? lifetimeMult.toFixed(1) + '×' : '—'}</strong>
+  </div>
+  <div class="subtle" id="cw-lt-note" style="margin-top: 6px;">Over ${monthsSinceFirst.toFixed(1)} months at ${fmtUsd(plan.monthly)}/mo.</div>
   ${agg.topCall ? `
     <div class="row" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border);">
       <span class="label">Most expensive single call</span>
@@ -556,7 +606,7 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt }) 
 </details>
 
 <footer>
-  Generated ${fmtDateTime(generatedAt)} · source: <code>${escapeHtml(sourceDir)}</code> · plan: <code id="cw-plan-footer">${planKey}</code>
+  Generated ${fmtDateTime(generatedAt)} · source: <code>${escapeHtml(sourceDir)}</code> · plan: <code id="cw-plan-footer">${planKey}</code>${version ? ` · claudeworth v${escapeHtml(version)}` : ''}
 </footer>
 
 </main>

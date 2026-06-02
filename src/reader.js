@@ -17,6 +17,14 @@ export function decodeProjectName(encoded) {
   return parts.slice(-3).join('/') || encoded;
 }
 
+// Accurate display name from a real cwd (e.g. "C:\\Users\\Peter\\code\\my-app" -> "code/my-app").
+// Splits on both separators so it works for Windows and POSIX paths, then keeps the last two
+// segments for a recognizable-but-compact label.
+export function prettyCwd(cwd) {
+  const parts = String(cwd || '').split(/[\\/]+/).filter(Boolean);
+  return parts.slice(-2).join('/');
+}
+
 async function* iterateLines(filePath) {
   const stream = createReadStream(filePath, { encoding: 'utf8' });
   const rl = createInterface({ input: stream, crlfDelay: Infinity });
@@ -68,6 +76,9 @@ export async function readAllUsageEvents({ projectsDir = CLAUDE_PROJECTS_DIR } =
             sessionId,
             project: projectName,
             projectRaw: dirent.name,
+            // Real absolute working directory recorded on the line — lets us show an
+            // accurate project name instead of guessing from the dash-encoded folder.
+            cwd: obj.cwd || '',
             requestId: obj.requestId,
             messageId: msg.id,
             input: u.input_tokens || 0,

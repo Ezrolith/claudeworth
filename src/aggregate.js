@@ -1,4 +1,5 @@
 import { priceEvent, familyOf, modelInfo } from './pricing.js';
+import { prettyCwd } from './reader.js';
 
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
@@ -33,11 +34,40 @@ function localDateKey(date) {
   return `${y}-${m}-${d}`;
 }
 
+// For each project folder, pick the most common real cwd and turn it into a display name.
+// Returns Map(projectRaw -> displayName). Folders with no cwd on any event are absent.
+function resolveProjectNames(priced) {
+  const counts = new Map(); // projectRaw -> Map(cwd -> count)
+  for (const e of priced) {
+    if (!e.cwd) continue;
+    let m = counts.get(e.projectRaw);
+    if (!m) { m = new Map(); counts.set(e.projectRaw, m); }
+    m.set(e.cwd, (m.get(e.cwd) || 0) + 1);
+  }
+  const names = new Map();
+  for (const [raw, m] of counts) {
+    let best = '', bestN = -1;
+    for (const [cwd, n] of m) if (n > bestN) { best = cwd; bestN = n; }
+    const pretty = prettyCwd(best);
+    if (pretty) names.set(raw, pretty);
+  }
+  return names;
+}
+
 export function aggregate(events, { now = new Date() } = {}) {
-  const priced = priceAndAnnotate(events);
+  // Drop events whose timestamp didn't parse — they can't be bucketed, and counting them only
+  // in all-time totals (but nowhere else) would make the surfaces disagree.
+  const priced = priceAndAnnotate(events).filter(e => !Number.isNaN(e.date.getTime()));
+
+  // Prefer the accurate cwd-derived name; fall back to the dash-decoded folder name.
+  const nameByRaw = resolveProjectNames(priced);
+  for (const e of priced) e.projectName = nameByRaw.get(e.projectRaw) || e.project;
 
   const weekStart = startOfWeek(now);
-  const weekEnd = new Date(weekStart.getTime() + 7 * DAY);
+  // Next Monday 00:00 local via calendar arithmetic (not +7*24h) so it stays correct across a
+  // DST transition — otherwise the week would be an hour long/short twice a year.
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 7);
   const monthAgo = new Date(now.getTime() - 30 * DAY);
 
   // Current 5h rolling session window: from (now - 5h) to now,
@@ -46,7 +76,8 @@ export function aggregate(events, { now = new Date() } = {}) {
 
   const inWindow = (e, start, end = now) => e.date >= start && e.date <= end;
 
-  const week = priced.filter(e => inWindow(e, weekStart, weekEnd));
+  // Week uses a half-open interval so an event at exactly next-Monday 00:00 belongs to next week.
+  const week = priced.filter(e => e.date >= weekStart && e.date < weekEnd);
   const session = priced.filter(e => inWindow(e, sessionWindowStart));
   const last30 = priced.filter(e => inWindow(e, monthAgo));
   const all = priced;
@@ -59,7 +90,7 @@ export function aggregate(events, { now = new Date() } = {}) {
     if (!row) {
       row = {
         sessionId: key,
-        project: e.project,
+        project: e.projectName,
         firstTs: e.date,
         lastTs: e.date,
         cost: 0,
@@ -79,10 +110,10 @@ export function aggregate(events, { now = new Date() } = {}) {
   // Per-project rollup within this week
   const projectMap = new Map();
   for (const e of week) {
-    const row = projectMap.get(e.project) || { project: e.project, cost: 0, calls: 0 };
+    const row = projectMap.get(e.projectName) || { project: e.projectName, cost: 0, calls: 0 };
     row.cost += e.cost;
     row.calls += 1;
-    projectMap.set(e.project, row);
+    projectMap.set(e.projectName, row);
   }
   const projects = [...projectMap.values()].sort((a, b) => b.cost - a.cost);
 
@@ -130,6 +161,7 @@ export function aggregate(events, { now = new Date() } = {}) {
   const matrixCalls = Array.from({ length: 7 }, () => Array(24).fill(0));
   const hourTotals = Array(24).fill(0);
   const dowTotals = Array(7).fill(0);
+  const dowTotalsCalls = Array(7).fill(0);
   for (const e of last30) {
     const jsDow = e.date.getDay(); // 0=Sun
     const dow = (jsDow + 6) % 7;   // 0=Mon
@@ -138,6 +170,7 @@ export function aggregate(events, { now = new Date() } = {}) {
     matrixCalls[dow][hour] += 1;
     hourTotals[hour] += e.cost;
     dowTotals[dow] += e.cost;
+    dowTotalsCalls[dow] += 1;
   }
 
   // Distinct model strings that didn't match our price table — surface for transparency.
@@ -151,18 +184,19 @@ export function aggregate(events, { now = new Date() } = {}) {
   const sum = (arr, k) => arr.reduce((s, x) => s + x[k], 0);
 
   // Current usage streak: consecutive days back from today with at least one event.
-  // (Today counts even if you've only used Claude once.)
+  // (Today counts even if you've only used Claude once.) Built from a full-history day set, not
+  // the 30-day chart window, so streaks longer than a month aren't silently capped at ~30.
+  const daysWithUsage = new Set();
+  for (const e of priced) daysWithUsage.add(localDateKey(e.date));
   let streak = 0;
-  const dayCostMap = new Map(dailySeries.map(d => [d.day, d.cost]));
-  for (let i = 0; i < 365; i++) {
+  for (let i = 0; i < 3650; i++) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
     const key = localDateKey(d);
-    if ((dayCostMap.get(key) || 0) > 0) {
+    if (daysWithUsage.has(key)) {
       streak += 1;
     } else if (i === 0) {
-      // No usage today — streak is whatever it was before today.
-      // Restart count from yesterday.
+      // No usage today yet — keep counting back from yesterday.
       continue;
     } else {
       break;
@@ -190,7 +224,7 @@ export function aggregate(events, { now = new Date() } = {}) {
     dailySeries,
     topCall,
     unknownModels: [...unknownModels.entries()].map(([model, n]) => ({ model, n })),
-    heatmap: { matrix, matrixCalls, hourTotals, dowTotals },
+    heatmap: { matrix, matrixCalls, hourTotals, dowTotals, dowTotalsCalls },
     streak,
   };
 }

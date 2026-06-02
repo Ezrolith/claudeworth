@@ -10,23 +10,31 @@ const PER_M = 1_000_000;
 // Source: https://platform.claude.com/docs/en/about-claude/pricing (verified May 2026).
 // IMPORTANT ordering: more specific regexes must come first because we return on first match.
 // Opus dropped 67% with the 4.5 generation ($15/$75 → $5/$25); 4.1 and below kept the old rate.
+//
+// Real model ids come in two shapes the regexes must both handle:
+//   versioned: claude-opus-4-5, claude-sonnet-4-6, claude-haiku-4-5-20251001
+//   dated/old: claude-opus-4-20250514 (Opus 4.0), claude-3-5-haiku-20241022 (number BEFORE name)
+// The new-Opus rule matches minor versions 5..9 (and two-digit minors like 4.10) but must NOT be
+// fooled by an 8-digit date suffix — hence the (?!\d) guard, so "4-20250514" is read as Opus 4.0,
+// not 4.5. Pre-4.5 ids put the version before the family name (claude-3-5-haiku), so those rules
+// carry a reversed-order alternative.
 const MODELS = [
-  // Opus — new pricing (4.5, 4.6, 4.7)
-  { match: /opus[-.]?4[-.](?:5|6|7)/i, family: 'opus-4.5+',  input: 5,    output: 25 },
-  // Opus — legacy pricing (4, 4.1)
-  { match: /opus[-.]?4[-.]1/i,          family: 'opus-4.1',  input: 15,   output: 75 },
-  { match: /opus[-.]?4(?![-.\d])/i,     family: 'opus-4',    input: 15,   output: 75 },
-  { match: /opus[-.]?3/i,               family: 'opus-3',    input: 15,   output: 75 },
-  { match: /opus/i,                     family: 'opus',      input: 5,    output: 25 },
-  // Sonnet — $3/$15 across the 4.x line
-  { match: /sonnet[-.]?4/i,             family: 'sonnet-4',  input: 3,    output: 15 },
-  { match: /sonnet[-.]?3[-.]?7/i,       family: 'sonnet-3.7', input: 3,   output: 15 },
-  { match: /sonnet[-.]?3[-.]?5/i,       family: 'sonnet-3.5', input: 3,   output: 15 },
-  { match: /sonnet/i,                   family: 'sonnet',    input: 3,    output: 15 },
+  // Opus — new pricing (4.5 and later)
+  { match: /opus[-.]?4[-.](?:[5-9]|\d\d)(?!\d)/i, family: 'opus-4.5+',  input: 5,  output: 25 },
+  // Opus — legacy pricing (4.1, and bare/dated 4.0)
+  { match: /opus[-.]?4[-.]1/i,                     family: 'opus-4.1',  input: 15, output: 75 },
+  { match: /opus[-.]?4/i,                          family: 'opus-4',    input: 15, output: 75 },
+  { match: /(?:opus[-.]?3|3[-.]opus)/i,            family: 'opus-3',    input: 15, output: 75 },
+  { match: /opus/i,                                family: 'opus',      input: 5,  output: 25 },
+  // Sonnet — $3/$15 across the 4.x and 3.x line
+  { match: /sonnet[-.]?4/i,                              family: 'sonnet-4',   input: 3, output: 15 },
+  { match: /(?:sonnet[-.]?3[-.]?7|3[-.]7[-.]sonnet)/i,  family: 'sonnet-3.7', input: 3, output: 15 },
+  { match: /(?:sonnet[-.]?3[-.]?5|3[-.]5[-.]sonnet)/i,  family: 'sonnet-3.5', input: 3, output: 15 },
+  { match: /sonnet/i,                                    family: 'sonnet',     input: 3, output: 15 },
   // Haiku
-  { match: /haiku[-.]?4/i,              family: 'haiku-4.5', input: 1,    output: 5  },
-  { match: /haiku[-.]?3[-.]?5/i,        family: 'haiku-3.5', input: 0.8,  output: 4  },
-  { match: /haiku/i,                    family: 'haiku',     input: 0.25, output: 1.25 },
+  { match: /haiku[-.]?4/i,                               family: 'haiku-4.5', input: 1,    output: 5  },
+  { match: /(?:haiku[-.]?3[-.]?5|3[-.]5[-.]haiku)/i,     family: 'haiku-3.5', input: 0.8,  output: 4  },
+  { match: /haiku/i,                                     family: 'haiku',     input: 0.25, output: 1.25 },
 ];
 
 const FALLBACK = { family: 'unknown', input: 3, output: 15 };
@@ -70,24 +78,6 @@ export function priceEvent(ev) {
     ev.cacheRead  * cacheRead  +
     create5m      * cache5m    +
     create1h      * cache1h
-  );
-}
-
-// What this event WOULD have cost without prompt caching:
-// every cache_read and cache_create token is billed at the base input rate.
-export function priceEventUncached(ev) {
-  const info = modelInfo(ev.model);
-  const inputRate  = info.input  / PER_M;
-  const outputRate = info.output / PER_M;
-  const cacheTotal =
-    (ev.cacheRead || 0) +
-    (ev.cacheCreate5m || 0) +
-    (ev.cacheCreate1h || 0) +
-    ((ev.cacheCreate5m || ev.cacheCreate1h) ? 0 : (ev.cacheCreateTotal || 0));
-  return (
-    ev.input      * inputRate  +
-    ev.output     * outputRate +
-    cacheTotal    * inputRate
   );
 }
 

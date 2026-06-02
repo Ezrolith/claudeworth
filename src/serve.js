@@ -2,7 +2,7 @@
 // Tiny static server for the dashboard, used by the preview workflow.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 
 const PORT = Number(process.env.PORT) || 5174;
 const ROOT = resolve(process.argv[2] || './dist');
@@ -21,7 +21,8 @@ const server = createServer(async (req, res) => {
     let path = decodeURIComponent(url.pathname);
     if (path === '/' || path.endsWith('/')) path += 'index.html';
     const full = resolve(join(ROOT, path));
-    if (!full.startsWith(ROOT)) {
+    // Guard against a sibling-directory bypass (e.g. ROOT="/x/dist" should not serve "/x/dist-evil").
+    if (full !== ROOT && !full.startsWith(ROOT + sep)) {
       res.writeHead(403); res.end('forbidden'); return;
     }
     const data = await readFile(full);

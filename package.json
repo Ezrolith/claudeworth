@@ -1,14 +1,15 @@
 {
   "name": "claudeworth",
-  "version": "0.2.5",
-  "description": "Is your Claude subscription worth it? Compares your real Claude Code usage against pay-as-you-go API rates and shows your effective discount, cache savings, and value-for-money.",
+  "version": "0.3.0",
+  "description": "Is your Claude subscription worth it? Compares your real Claude Code usage against pay-as-you-go API rates and shows your effective discount and value-for-money.",
   "type": "module",
   "bin": {
     "claudeworth": "src/cli.js"
   },
   "main": "./src/cli.js",
   "scripts": {
-    "start": "node src/cli.js"
+    "start": "node src/cli.js",
+    "test": "node --test"
   },
   "files": [
     "src/cli.js",
