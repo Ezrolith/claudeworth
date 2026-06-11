@@ -56,8 +56,11 @@ function resolveProjectNames(priced) {
 
 export function aggregate(events, { now = new Date() } = {}) {
   // Drop events whose timestamp didn't parse — they can't be bucketed, and counting them only
-  // in all-time totals (but nowhere else) would make the surfaces disagree.
-  const priced = priceAndAnnotate(events).filter(e => !Number.isNaN(e.date.getTime()));
+  // in all-time totals (but nowhere else) would make the surfaces disagree. Also drop
+  // "<synthetic>" placeholder rows: they represent no API call, so counting them as messages
+  // anywhere (or showing a $0 "synthetic" family row) would just be noise.
+  const priced = priceAndAnnotate(events)
+    .filter(e => !Number.isNaN(e.date.getTime()) && e.family !== 'synthetic');
 
   // Prefer the accurate cwd-derived name; fall back to the dash-decoded folder name.
   const nameByRaw = resolveProjectNames(priced);
@@ -68,6 +71,9 @@ export function aggregate(events, { now = new Date() } = {}) {
   // DST transition — otherwise the week would be an hour long/short twice a year.
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekEnd.getDate() + 7);
+  // Previous Monday 00:00, same calendar arithmetic for the same DST reason.
+  const lastWeekStart = new Date(weekStart);
+  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
   const monthAgo = new Date(now.getTime() - 30 * DAY);
 
   // Current 5h rolling session window: from (now - 5h) to now,
@@ -77,7 +83,12 @@ export function aggregate(events, { now = new Date() } = {}) {
   const inWindow = (e, start, end = now) => e.date >= start && e.date <= end;
 
   // Week uses a half-open interval so an event at exactly next-Monday 00:00 belongs to next week.
-  const week = priced.filter(e => e.date >= weekStart && e.date < weekEnd);
+  // week/today also clamp at `now` so a future-stamped event (clock skew, a ~/.claude synced from
+  // another machine) can't be counted here while the rolling windows exclude it.
+  const week = priced.filter(e => e.date >= weekStart && e.date < weekEnd && e.date <= now);
+  const lastWeek = priced.filter(e => e.date >= lastWeekStart && e.date < weekStart);
+  const todayKey = localDateKey(now);
+  const today = priced.filter(e => localDateKey(e.date) === todayKey && e.date <= now);
   const session = priced.filter(e => inWindow(e, sessionWindowStart));
   const last30 = priced.filter(e => inWindow(e, monthAgo));
   const all = priced;
@@ -213,10 +224,12 @@ export function aggregate(events, { now = new Date() } = {}) {
     weekEnd,
     sessionWindowStart,
     totals: {
-      week:    { cost: sum(week, 'cost'),    calls: week.length },
-      session: { cost: sum(session, 'cost'), calls: session.length },
-      last30:  { cost: sum(last30, 'cost'),  calls: last30.length },
-      allTime: { cost: sum(all, 'cost'),     calls: all.length, firstTs: allTimeFirst, lastTs: allTimeLast },
+      week:     { cost: sum(week, 'cost'),     calls: week.length },
+      lastWeek: { cost: sum(lastWeek, 'cost'), calls: lastWeek.length },
+      today:    { cost: sum(today, 'cost'),    calls: today.length },
+      session:  { cost: sum(session, 'cost'),  calls: session.length },
+      last30:   { cost: sum(last30, 'cost'),   calls: last30.length },
+      allTime:  { cost: sum(all, 'cost'),      calls: all.length, firstTs: allTimeFirst, lastTs: allTimeLast },
     },
     sessions,
     projects,

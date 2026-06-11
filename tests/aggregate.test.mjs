@@ -72,6 +72,45 @@ test('aggregate rolls up week/session/project/family/streak/heatmap from a synth
   assert.equal(a.heatmap.dowTotalsCalls[2], 2);
 });
 
+test('aggregate buckets today and lastWeek windows correctly', () => {
+  const now = new Date(2026, 5, 3, 12, 0, 0); // Wed Jun 3 2026, noon local
+  const events = [
+    ev(new Date(2026, 5, 3, 11), { input: 1e6 }),          // today           -> $3
+    ev(new Date(2026, 5, 2, 9),  { input: 1e6 }),          // this week, not today
+    ev(new Date(2026, 5, 1, 0, 0), { input: 1e6 }),        // Mon Jun 1 00:00: THIS week (exclusive upper edge of lastWeek)
+    ev(new Date(2026, 4, 28, 10), { input: 1e6 }),         // Thu May 28: LAST week
+    ev(new Date(2026, 4, 25, 0, 0), { input: 1e6 }),       // Mon May 25 00:00: last week boundary (inclusive)
+    ev(new Date(2026, 4, 24, 23), { input: 1e6 }),         // Sun May 24: before last week
+  ];
+  const a = aggregate(events, { now });
+  assert.equal(a.totals.today.cost, 3);
+  assert.equal(a.totals.today.calls, 1);
+  assert.equal(a.totals.week.calls, 3);      // Jun 1 boundary lands in week, NOT lastWeek
+  assert.equal(a.totals.lastWeek.cost, 6);   // May 28 + May 25 boundary
+  assert.equal(a.totals.lastWeek.calls, 2);
+});
+
+test('aggregate clamps today/week at now — future-stamped events are excluded', () => {
+  const now = new Date(2026, 5, 3, 12, 0, 0);
+  const a = aggregate([
+    ev(new Date(2026, 5, 3, 12, 30), { input: 1e6 }), // 30 min in the future (clock skew)
+  ], { now });
+  assert.equal(a.totals.today.calls, 0);
+  assert.equal(a.totals.week.calls, 0);
+});
+
+test('aggregate excludes "<synthetic>" placeholder rows from every surface', () => {
+  const now = new Date(2026, 5, 3, 12, 0, 0);
+  const a = aggregate([
+    ev(new Date(2026, 5, 3, 11), { input: 1e6 }),
+    ev(new Date(2026, 5, 3, 11, 30), { model: '<synthetic>' }),
+  ], { now });
+  assert.equal(a.totals.allTime.calls, 1);
+  assert.equal(a.totals.today.calls, 1);
+  assert.equal(a.totals.week.calls, 1);
+  assert.ok(!a.families.some(f => f.family === 'synthetic'));
+});
+
 test('aggregate falls back to the decoded project name when cwd is absent', () => {
   const now = new Date(2026, 5, 3, 12, 0, 0);
   const a = aggregate([

@@ -12,10 +12,10 @@ That's it. It reads `~/.claude/projects/` locally, prices every message at Anthr
 
 - **Effective multiplier** — your API-equivalent value ÷ your prorated subscription cost (e.g. "7.4× this week").
 - **Lifetime return** — total API-equivalent value extracted vs. subscription actually paid since your first session, as a net dollar figure and a multiplier. Steadier than the single-week number.
-- **Last 5 hours** — proxy for Claude Code's per-session cap.
-- **This week** — value vs. break-even, with a monthly pace projection.
+- **Last 5 hours / Today / This week** — the session cap proxy, today's burn, and weekly value vs. break-even with a monthly pace projection and week-over-week comparison.
+- **Live** — session transcripts are read as they're written, so your current in-progress session is already counted (a pulsing badge shows when it is).
 - **By project** — which repos are eating your subscription (named from each session's real working directory).
-- **By model** — Opus vs Sonnet vs Haiku split, with per-model cache hit rate.
+- **By model** — Fable vs Opus vs Sonnet vs Haiku split, with per-model cache hit rate.
 - **Top sessions** — your most expensive sessions, with the model mix that drove the cost.
 - **Heatmap** — day-of-week × hour-of-day, toggleable between cost and call count, with each day's total down the side. Find your peak hours.
 - **All-time stats** — lifetime totals, current streak, most expensive single call.
@@ -28,6 +28,8 @@ There are already two tools in this space: [codeburn](https://www.npmjs.com/pack
 `claudeworth` is built around that one question. Everything on the dashboard ties back to it.
 
 It also fixes one small but expensive bug both other tools appear to share: Opus 4.5/4.6/4.7 quietly dropped from $15/$75 per MTok to $5/$25 per MTok in late 2025. Tools that hardcoded the old rates over-report cost by ~3× on Opus-heavy users.
+
+And it knows about the Claude 5 generation: Fable 5 and Mythos 5 are priced at their real $10/$50 premium tier. Tools without an entry for them silently fall back to a cheaper rate and **under**-report Fable-heavy usage by ~3×.
 
 ## Privacy
 

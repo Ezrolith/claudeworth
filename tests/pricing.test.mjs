@@ -53,8 +53,30 @@ test('modelInfo: Haiku 3.5 reversed-order id is $0.80/$4, not the bare-Haiku $0.
   assert.equal(modelInfo('claude-3-haiku-20240307').input, 0.25);
 });
 
-test('modelInfo: unknown / synthetic strings fall back to Sonnet rate and are flagged', () => {
+test('modelInfo: Fable 5 / Mythos 5 are the $10/$50 premium tier above Opus', () => {
+  for (const id of ['claude-fable-5', 'claude-fable-5-20260601']) {
+    const i = modelInfo(id);
+    assert.equal(i.family, 'fable-5', id);
+    assert.equal(i.input, 10, id);
+    assert.equal(i.output, 50, id);
+  }
+  for (const id of ['claude-mythos-5', 'claude-mythos-preview']) {
+    const i = modelInfo(id);
+    assert.equal(i.family, 'mythos-5', id);
+    assert.equal(i.input, 10, id);
+    assert.equal(i.output, 50, id);
+  }
+});
+
+test('modelInfo: "<synthetic>" rows are priced at zero, not flagged as unknown', () => {
   const i = modelInfo('<synthetic>');
+  assert.equal(i.family, 'synthetic');
+  assert.ok(!i.unknown);
+  assert.equal(priceEvent(ev({ model: '<synthetic>', input: 1e6, output: 1e6 })), 0);
+});
+
+test('modelInfo: unknown strings fall back to Sonnet rate and are flagged', () => {
+  const i = modelInfo('totally-made-up');
   assert.equal(i.unknown, true);
   assert.equal(i.input, 3);
   assert.equal(i.output, 15);
@@ -76,12 +98,19 @@ test('CACHE_MULTIPLIERS are the exact published rates (the methodology promise)'
 
 test('pricingTable surfaces the headline families with correct base rates', () => {
   const byFamily = Object.fromEntries(pricingTable().map(r => [r.family, r]));
+  assert.equal(byFamily['fable-5'].input, 10);
+  assert.equal(byFamily['fable-5'].output, 50);
   assert.equal(byFamily['opus-4.5+'].input, 5);
   assert.equal(byFamily['opus-4.5+'].output, 25);
   assert.equal(byFamily['opus-4'].input, 15);
   assert.equal(byFamily['sonnet-4'].input, 3);
   assert.equal(byFamily['haiku-4.5'].input, 1);
   // Derived cache columns line up with the multipliers.
+  assert.equal(byFamily['fable-5'].cacheRead, 1);      // 10 * 0.1
+  assert.equal(byFamily['fable-5'].cache5m, 12.5);     // 10 * 1.25
+  assert.equal(byFamily['fable-5'].cache1h, 20);       // 10 * 2.0
   assert.equal(byFamily['opus-4.5+'].cacheRead, 0.5);  // 5 * 0.1
   assert.equal(byFamily['opus-4.5+'].cache1h, 10);     // 5 * 2.0
+  // Zero-rate synthetic rows are an internal detail — keep them out of the methodology table.
+  assert.ok(!byFamily['synthetic']);
 });

@@ -75,6 +75,27 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt, ve
   // Session window labels
   const sessionStartLabel = fmtDateTime(agg.sessionWindowStart);
 
+  // Live indicator: transcripts are appended as you work, so a recent event means an
+  // in-progress session is already counted in every number on this page.
+  // The lower bound guards against future-stamped events (clock skew) claiming "live".
+  const LIVE_THRESHOLD_MS = 15 * 60 * 1000;
+  const liveAgeMs = allTime.lastTs ? now - allTime.lastTs : Infinity;
+  const isLive = liveAgeMs >= 0 && liveAgeMs < LIVE_THRESHOLD_MS;
+  const liveExpiresAtMs = isLive ? allTime.lastTs.getTime() + LIVE_THRESHOLD_MS : 0;
+
+  // Week-over-week: compare this week's projected pace against last week's full total.
+  const lastWeekValue = agg.totals.lastWeek ? agg.totals.lastWeek.cost : 0;
+  let paceDelta = '';
+  if (!tooEarly && lastWeekValue > 0.5) {
+    const ratio = projectedWeek / lastWeekValue - 1;
+    const arrow = ratio >= 0 ? '↑' : '↓';
+    const cls = ratio >= 0 ? 'good' : 'bad';
+    paceDelta = ` <span class="${cls}">(pace ${arrow}${Math.abs(ratio * 100).toFixed(0)}%)</span>`;
+  }
+
+  const todayValue = agg.totals.today ? agg.totals.today.cost : 0;
+  const todayCalls = agg.totals.today ? agg.totals.today.calls : 0;
+
   // Week reset
   const weekResetIn = agg.weekEnd - now;
   const weekResetDays = Math.floor(weekResetIn / (24 * 3600 * 1000));
@@ -321,6 +342,14 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt, ve
   .plan-picker select:hover { border-color: var(--accent); }
   .plan-picker select:focus { outline: none; border-color: var(--accent); }
 
+  .live { color: var(--ok); }
+  .live-dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--ok); margin-right: 4px; vertical-align: baseline;
+    animation: cw-pulse 2s ease-in-out infinite;
+  }
+  @keyframes cw-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
   footer { color: var(--muted); font-size: 12px; margin-top: 24px; text-align: center; }
   code { background: #21262d; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
 </style>
@@ -339,7 +368,7 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt, ve
           <option value="max20"${planKey === 'max20' ? ' selected' : ''}>Claude Max 20x · $200/mo</option>
         </select>
       </div>
-      <div class="subtle">Week of ${fmtDate(agg.weekStart)} – ${fmtDate(new Date(agg.weekEnd - 1))}</div>
+      <div class="subtle">Week of ${fmtDate(agg.weekStart)} – ${fmtDate(new Date(agg.weekEnd - 1))}${isLive ? ' · <span class="live" id="cw-live"><span class="live-dot"></span>live — your in-progress session is included</span>' : ''}</div>
     </div>
     <div style="text-align: right;">
       <div class="hero-title">Effective multiplier</div>
@@ -356,7 +385,7 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt, ve
   </div>
 </div>
 
-<div class="grid">
+<div class="grid-3">
 
   <div class="card">
     <h3>Last 5 hours</h3>
@@ -367,11 +396,20 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt, ve
   </div>
 
   <div class="card">
+    <h3>Today</h3>
+    <div class="row"><span class="label">API value</span><strong>${fmtUsd(todayValue)}</strong></div>
+    <div class="row"><span class="label">Messages</span><strong>${fmtInt(todayCalls)}</strong></div>
+    <div class="row"><span class="label">Share of week</span><strong>${weekValue > 0 ? fmtPct(pct(todayValue, weekValue)) : '—'}</strong></div>
+    <div class="subtle" style="margin-top:8px;">Since midnight, your local time.</div>
+  </div>
+
+  <div class="card">
     <h3>This week</h3>
     <div class="row"><span class="label">API value</span><strong>${fmtUsd(weekValue)}</strong></div>
     <div class="row"><span class="label">Subscription (prorated)</span><strong id="cw-weeklysub">${fmtUsd(weeklySub)}</strong></div>
     <div class="row"><span class="label">vs break-even</span><strong id="cw-vs-be">${multiplier >= 1 ? multiplier.toFixed(1) + '× over' : fmtPct(pct(weekValue, weeklySub)) + ' of break-even'}</strong></div>
     <div style="margin: 8px 0;" id="cw-be-bar-wrap">${bar(Math.min(1, weekValue / weeklySub), { invert: true, danger: 1.0, warn: 0.5 })}</div>
+    <div class="row"><span class="label">Last week</span><strong>${lastWeekValue > 0 ? fmtUsd(lastWeekValue) + paceDelta : '—'}</strong></div>
     <div class="row"><span class="label">Resets in</span><strong>${weekResetDays}d ${weekResetHrs}h</strong></div>
   </div>
 
@@ -532,6 +570,17 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt, ve
     const sel = document.getElementById('cw-plan-select');
     if (sel) sel.addEventListener('change', () => recompute(sel.value));
   })();
+
+  // The live badge is baked in at generation time; expire it client-side so a stale
+  // page (left open, or reopened later) doesn't keep claiming "live".
+  (function() {
+    const el = document.getElementById('cw-live');
+    if (!el) return;
+    const expiresAt = ${liveExpiresAtMs};
+    const tick = () => { if (Date.now() > expiresAt) { el.remove(); clearInterval(timer); } };
+    const timer = setInterval(tick, 30000);
+    tick();
+  })();
 </script>
 
 <h2>By model family · this week</h2>
@@ -594,6 +643,8 @@ export function renderDashboard({ agg, plan, planKey, sourceDir, generatedAt, ve
   </table>
   <p class="subtle" style="margin-top:12px;">Notes:</p>
   <ul class="subtle">
+    <li><strong>Open sessions count immediately.</strong> Claude Code appends to the transcript after every message, so an in-progress session is already included in every number here — there's no "session must end first" delay. Re-run claudeworth to pick up messages sent since this page was generated.</li>
+    <li><strong>Claude Fable 5 / Mythos 5</strong> are priced at the $10/$50 premium tier — double Opus 4.5+ per token. Fable 5's tokenizer also produces roughly 30% more tokens than Opus-tier models for the same content, so identical work costs disproportionately more in API-equivalent terms. Both effects are real API pricing, not artifacts.</li>
     <li>If the schema lacks a 5m/1h breakdown on cache_creation, all cache-create tokens are treated as 5m writes (the default, slightly under-counts 1h).</li>
     <li>"vs break-even" is API-equivalent value ÷ (monthly subscription ÷ 4.345 weeks).</li>
     <li>Monthly pace projects this week's value to a full week (linear), then × 4.345.</li>

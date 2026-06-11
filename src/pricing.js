@@ -7,7 +7,7 @@
 
 const PER_M = 1_000_000;
 
-// Source: https://platform.claude.com/docs/en/about-claude/pricing (verified May 2026).
+// Source: https://platform.claude.com/docs/en/about-claude/pricing (verified Jun 2026).
 // IMPORTANT ordering: more specific regexes must come first because we return on first match.
 // Opus dropped 67% with the 4.5 generation ($15/$75 → $5/$25); 4.1 and below kept the old rate.
 //
@@ -19,6 +19,10 @@ const PER_M = 1_000_000;
 // not 4.5. Pre-4.5 ids put the version before the family name (claude-3-5-haiku), so those rules
 // carry a reversed-order alternative.
 const MODELS = [
+  // Claude 5 frontier tier — Fable 5 ($10/$50) sits ABOVE Opus, the first tier increase since 4.5.
+  // Mythos 5 (Project Glasswing) and the older Mythos Preview share the same rate.
+  { match: /fable/i,  family: 'fable-5',  input: 10, output: 50 },
+  { match: /mythos/i, family: 'mythos-5', input: 10, output: 50 },
   // Opus — new pricing (4.5 and later)
   { match: /opus[-.]?4[-.](?:[5-9]|\d\d)(?!\d)/i, family: 'opus-4.5+',  input: 5,  output: 25 },
   // Opus — legacy pricing (4.1, and bare/dated 4.0)
@@ -35,6 +39,9 @@ const MODELS = [
   { match: /haiku[-.]?4/i,                               family: 'haiku-4.5', input: 1,    output: 5  },
   { match: /(?:haiku[-.]?3[-.]?5|3[-.]5[-.]haiku)/i,     family: 'haiku-3.5', input: 0.8,  output: 4  },
   { match: /haiku/i,                                     family: 'haiku',     input: 0.25, output: 1.25 },
+  // Claude Code logs "<synthetic>" rows for client-generated messages (no API call, zero tokens).
+  // Price them at zero so they don't show up in the unknown-models report.
+  { match: /^<synthetic>$/,                              family: 'synthetic', input: 0,    output: 0  },
 ];
 
 const FALLBACK = { family: 'unknown', input: 3, output: 15 };
