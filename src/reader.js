@@ -96,15 +96,14 @@ export async function readAllUsageEvents({ projectsDir = CLAUDE_PROJECTS_DIR } =
     }
   }
 
-  // De-duplicate by messageId (some events get re-logged on retries/resume)
-  const seen = new Set();
-  const deduped = [];
+  // De-duplicate by messageId (some events get re-logged on retries/resume or during streaming)
+  // We use a Map to keep the *last* event for a given key, which has the most complete usage stats.
+  const byKey = new Map();
   for (const e of events) {
     const key = e.messageId || `${e.sessionId}|${e.ts}|${e.input}|${e.output}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    deduped.push(e);
+    byKey.set(key, e);
   }
+  const deduped = Array.from(byKey.values());
 
   deduped.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
   return { events: deduped, projectsDir };
